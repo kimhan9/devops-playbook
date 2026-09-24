@@ -38,25 +38,37 @@ variable "cluster_version" {
   type = string
 }
 
+variable "cluster_endpoint_whitelist" {
+  description = "EKS api server whitelist"
+  type = list(string)
+}
 
-#variable "environment" {
-#  type        = string
-#  default     = "dev"
-#}
-#variable "vpc_cidr" {
-#  type        = string
-#  description = "The base CIDR block assigned to the main VPC"
-#  default     = "10.0.0.0/16"
-#}
-#
-#variable "public_subnet_cidrs" {
-#  type        = list(string)
-#  description = "List of CIDR blocks for public subnets"
-#  default     = ["10.0.1.0/24", "10.0.2.0/24"]
-#}
-#
-#variable "private_subnet_cidrs" {
-#  type        = list(string)
-#  description = "List of CIDR blocks for private subnets"
-#  default     = ["10.0.10.0/24", "10.0.11.0/24"]
-#}
+variable "access_entries" {
+  type = map(object({
+    principal_arn = string
+    type          = optional(string, "STANDARD")
+    policy_associations = optional(map(object({
+      policy_arn = string
+      access_scope = object({
+        type = string
+      })
+    })), {})
+  }))
+  default = {}
+}
+
+variable "ec2_instance_types" {
+  type = list(string)
+}
+
+variable "ec2_min_size" {
+  type = number
+}
+
+variable "ec2_max_size" {
+  type = number
+}
+
+variable "ec2_desired_size" {
+  type = number
+}
