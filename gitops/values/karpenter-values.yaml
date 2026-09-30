@@ -1,0 +1,11 @@
+replicas: 1
+dnsPolicy: Default
+nodeSelector:
+  karpenter.sh/controller: "true"
+settings:
+  clusterName: "horus"
+  clusterEndpoint: "https://ACE6D2BD763E0C0C4CCB89358A3DDD14.gr7.ap-southeast-1.eks.amazonaws.com"
+  interruptionQueue: "horus-karpenter"
+  featureGates:
+    spotToSpotConsolidation: true
+    staticCapacity: true

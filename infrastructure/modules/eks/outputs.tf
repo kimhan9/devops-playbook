@@ -21,3 +21,15 @@ output "node_group_arn" {
 output "node_group_status" {
   value = module.eks.eks_managed_node_groups["core"].node_group_status
 }
+
+output "karpenter_node_role_name" {
+  value = module.karpenter.node_iam_role_name
+}
+
+output "karpenter_controller_role_arn" {
+  value = module.karpenter.iam_role_arn
+}
+
+output "karpenter_interruption_queue_name" {
+  value = module.karpenter.queue_name
+}

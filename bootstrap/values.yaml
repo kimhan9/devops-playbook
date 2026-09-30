@@ -1,0 +1,9 @@
+configs:
+  params:
+    server.insecure: true
+#global:
+#  nodeSelector:
+#    workload-type: system
+#  tolerations:
+#  - key: CriticalAddonsOnly
+#    operator: Exists

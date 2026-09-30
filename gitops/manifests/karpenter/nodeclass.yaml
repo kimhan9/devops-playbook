@@ -1,0 +1,30 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  kubelet:
+    maxPods: 100
+  amiSelectorTerms:
+    - alias: bottlerocket@1.66.0
+  role: horus-eks-node-role
+  blockDeviceMappings:
+    - deviceName: /dev/xvdb
+      ebs:
+        volumeSize: "50Gi"
+        volumeType: gp3
+        deleteOnTermination: true
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 2
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: horus
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: horus
+  tags:
+    karpenter.sh/discovery: horus
+    Name: horus-karpenter-node
+    Project: horus
