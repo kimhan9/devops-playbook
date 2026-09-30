@@ -7,8 +7,7 @@ spec:
   project: default
 
   source:
-    #repoURL: https://github.com/kimhan9/devops-playbook.git
-    repoURL: https://github.com/kimhan9/test.git
+    repoURL: https://github.com/kimhan9/devops-playbook.git
     targetRevision: main
     path: gitops/applications
     directory:
