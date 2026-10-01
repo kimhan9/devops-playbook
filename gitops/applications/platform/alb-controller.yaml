@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alb-controller
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    chart: aws-load-balancer-controller
+    repoURL: https://aws.github.io/eks-charts
+    targetRevision: 1.16.0
+    helm:
+      values: |
+        fullnameOverride: alb-controller
+        clusterName: horus
+        region: ap-southeast-1
+        serviceAccount:
+          name: aws-load-balancer-controller
+        vpcId: vpc-0a9f8b0c5a02dd916
+        nodeSelector:
+          workload-type: system
+        tolerations:
+          - key: "CriticalAddonsOnly"
+            operator: "Exists"
+        serviceMonitor:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
