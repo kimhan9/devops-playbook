@@ -1,0 +1,168 @@
+pipeline {
+    agent {
+        kubernetes {
+            defaultContainer 'docker'
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:27-cli
+    command: ['cat']
+    tty: true
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+  - name: sonar
+    image: sonarsource/sonar-scanner-cli:latest
+    command: ['cat']
+    tty: true
+  - name: trivy
+    image: aquasec/trivy:latest
+    command: ['cat']
+    tty: true
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+  - name: dind
+    image: docker:27-dind
+    securityContext:
+      privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ''
+"""
+        }
+    }
+
+    environment {
+        // Jenkins credentials (configure under Manage Jenkins > Credentials):
+        //   dockerhub             : "Username with password"
+        //   tmdb-api-key          : "Secret text" (TMDB API key)
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
+        TMDB_API_KEY          = credentials('tmdb-api-key')
+        IMAGE_NAME            = "${DOCKERHUB_CREDENTIALS_USR}/netflop"
+        IMAGE_TAG             = "${env.BUILD_NUMBER}"
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    stages {
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/ayushiee/nextflix.git'
+            }
+        }
+
+        stage('Generate Dockerfile') {
+            steps {
+                writeFile file: 'Dockerfile', text: '''
+                    FROM node:18.0.0-alpine
+
+                    WORKDIR /app
+
+                    COPY . .
+                    ENV NODE_OPTIONS=--openssl-legacy-provider
+                    ARG API_KEY
+                    ENV TMDB_KEY=${API_KEY}
+
+                    RUN npm install
+                    RUN npm run build
+
+                    EXPOSE 3000
+                    CMD ["npm", "start"]
+                '''
+                echo "Dockerfile generated successfully!"
+            }
+        }
+
+        stage('SonarQube Scan') {
+            steps {
+                container('sonar') {
+                    // Server URL and token come from Manage Jenkins > System > SonarQube servers
+                    // Add Secret Text credential
+                    withSonarQubeEnv('sonarqube') {
+                        sh '''
+                            sonar-scanner \
+                                -Dsonar.projectKey=netflop \
+                                -Dsonar.projectName=netflop \
+                                -Dsonar.projectVersion=$BUILD_NUMBER \
+                                -Dsonar.sources=. \
+                                -Dsonar.exclusions='node_modules/**,.next/**,public/**,**/*.min.js' \
+                                -Dsonar.sourceEncoding=UTF-8
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                // Requires a SonarQube webhook pointing to <jenkins-url>/sonarqube-webhook/
+                // Configure: In SonarQube -> Administration -> Configuration -> Webhooks -> Create -> http://my-jenkins.jenkins.svc:8080/sonarqube-webhook/
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                sh '''
+                    # Wait for the dind sidecar's daemon to come up
+                    for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+                    docker build \
+                        --build-arg API_KEY="$TMDB_API_KEY" \
+                        -t "$IMAGE_NAME:$IMAGE_TAG" \
+                        -t "$IMAGE_NAME:latest" \
+                        .
+                '''
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                container('trivy') {
+                    // Scans the image straight from the dind daemon (via DOCKER_HOST).
+                    // Full report is archived; the build fails only on fixable CRITICAL vulns.
+                    sh '''
+                        trivy image --no-progress --scanners vuln \
+                            --format template --template "@/contrib/html.tpl" \
+                            --output trivy-report.html \
+                            "$IMAGE_NAME:$IMAGE_TAG"
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                sh '''
+                    echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin
+                    docker push "$IMAGE_NAME:$IMAGE_TAG"
+                    docker push "$IMAGE_NAME:latest"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh '''
+                docker logout || true
+                docker rmi "$IMAGE_NAME:$IMAGE_TAG" "$IMAGE_NAME:latest" || true
+            '''
+        }
+        success {
+            echo "Pushed ${IMAGE_NAME}:${IMAGE_TAG}"
+        }
+    }
+}

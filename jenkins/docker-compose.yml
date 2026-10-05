@@ -1,0 +1,64 @@
+services:
+  jenkins:
+    build: .
+    container_name: jenkins
+    user: root  # needed to use the mounted Docker socket
+    ports:
+      - "30081:8080"
+    environment:
+      - TRIVY_SERVER=http://trivy:4954
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - sonarqube
+      - trivy
+    restart: unless-stopped
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://sonar-db:5432/sonar
+      - SONAR_JDBC_USERNAME=sonar
+      - SONAR_JDBC_PASSWORD=sonar
+      # Allow the webhook to call Jenkins on the private compose network
+      - SONAR_VALIDATEWEBHOOKS=false
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    depends_on:
+      - sonar-db
+    restart: unless-stopped
+
+  sonar-db:
+    image: postgres:16-alpine
+    container_name: sonar-db
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_DB=sonar
+    volumes:
+      - sonar_db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Trivy in server mode keeps one shared vulnerability DB, so Jenkins builds
+  # don't re-download it on every scan.
+  trivy:
+    image: aquasec/trivy:latest
+    container_name: trivy
+    command: ["server", "--listen", "0.0.0.0:4954"]
+    volumes:
+      - trivy_cache:/root/.cache/trivy
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  sonar_db:
+  trivy_cache:

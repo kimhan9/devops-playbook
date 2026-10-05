@@ -1,0 +1,128 @@
+// Pipeline for the local docker-compose stack (no Kubernetes).
+// Docker commands use the host daemon through the mounted socket.
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
+        TMDB_API_KEY          = credentials('tmdb-api-key')
+        IMAGE_NAME            = "${DOCKERHUB_CREDENTIALS_USR}/netflop"
+        IMAGE_TAG             = "${env.BUILD_NUMBER}"
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    stages {
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/ayushiee/nextflix.git'
+            }
+        }
+
+        stage('Generate Dockerfile') {
+            steps {
+                writeFile file: 'Dockerfile', text: '''
+                    FROM node:18.0.0-alpine
+
+                    WORKDIR /app
+
+                    COPY . .
+                    ENV NODE_OPTIONS=--openssl-legacy-provider
+                    ARG API_KEY
+                    ENV TMDB_KEY=${API_KEY}
+
+                    RUN npm install
+                    RUN npm run build
+
+                    EXPOSE 3000
+                    CMD ["npm", "start"]
+                '''
+            }
+        }
+
+        stage('SonarQube Scan') {
+            steps {
+                script {
+                    // "sonar-scanner" = Manage Jenkins > Tools > SonarQube Scanner installations
+                    def scannerHome = tool 'sonar-scanner'
+                    withSonarQubeEnv('sonarqube') {
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=netflop \
+                                -Dsonar.projectName=netflop \
+                                -Dsonar.projectVersion=\$BUILD_NUMBER \
+                                -Dsonar.sources=. \
+                                -Dsonar.exclusions='node_modules/**,.next/**,public/**,**/*.min.js' \
+                                -Dsonar.sourceEncoding=UTF-8
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                sh '''
+                    docker build \
+                        --build-arg API_KEY="$TMDB_API_KEY" \
+                        -t "$IMAGE_NAME:$IMAGE_TAG" \
+                        -t "$IMAGE_NAME:latest" \
+                        .
+                '''
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                // Uses the Trivy server container ($TRIVY_SERVER) for the vulnerability DB
+                sh '''
+                    trivy image --server "$TRIVY_SERVER" --no-progress --scanners vuln \
+                        --format template --template "@/contrib/html.tpl" \
+                        --output trivy-report.html \
+                        "$IMAGE_NAME:$IMAGE_TAG"
+                '''
+            }
+            post {
+                always {
+                    publishHTML(target: [
+                        reportName : 'Trivy Report',
+                        reportDir  : '.',
+                        reportFiles: 'trivy-report.html',
+                        keepAll    : true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing: true
+                    ])
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                sh '''
+                    echo "$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "$DOCKERHUB_CREDENTIALS_USR" --password-stdin
+                    docker push "$IMAGE_NAME:$IMAGE_TAG"
+                    docker push "$IMAGE_NAME:latest"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            sh '''
+                docker logout || true
+                docker rmi "$IMAGE_NAME:$IMAGE_TAG" "$IMAGE_NAME:latest" || true
+            '''
+        }
+    }
+}

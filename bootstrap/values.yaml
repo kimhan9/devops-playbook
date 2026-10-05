@@ -1,6 +1,9 @@
 configs:
   params:
     server.insecure: true
+server:
+  service:
+    type: NodePort
 #global:
 #  nodeSelector:
 #    workload-type: system
