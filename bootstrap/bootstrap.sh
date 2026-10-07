@@ -4,7 +4,7 @@ aws eks update-kubeconfig --region ap-southeast-1 --name horus
 helm upgrade --install argocd argo/argo-cd \
   --namespace argocd \
   --create-namespace \
-  --version 10.9.2 \
+  --version 10.9.6 \
   --values values.yaml
 
 # Generate mysql password for wordpress
