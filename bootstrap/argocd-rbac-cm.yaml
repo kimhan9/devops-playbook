@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  policy.csv: |
+    # Project-scoped readonly roles
+    p, role:read-only-user, applications, get, aat-apps-uat/*, allow
+    p, role:read-only-user, logs, get, aat-apps-uat/*, allow
+    # Assign teams
+    g, dev, role:read-only-user
+  policy.default: ''
