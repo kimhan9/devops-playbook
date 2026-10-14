@@ -4,10 +4,3 @@ configs:
 server:
   service:
     type: NodePort
-#global:
-#  domain: argocd.mydomain.com
-#  nodeSelector:
-#    workload-type: system
-#  tolerations:
-#  - key: CriticalAddonsOnly
-#    operator: Exists
