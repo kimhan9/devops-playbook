@@ -62,3 +62,31 @@ global:
   tolerations:
   - key: CriticalAddonsOnly
     operator: Exists
+controller:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      selector:
+        release: kube-prometheus
+server:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      selector:
+        release: kube-prometheus
+repoServer:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      selector:
+        release: kube-prometheus
+applicationSet:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      selector:
+        release: kube-prometheus
